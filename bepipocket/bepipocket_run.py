@@ -13,6 +13,8 @@ from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
 from general_functions import load_pickle_file
+from restraint_utilities import abag_make_pocket_restraints
+
 
 ### STATIC VARIABLES ###
 
@@ -47,8 +49,7 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
 
 def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200,
                         overwrite_earlier_jobcontent=False, antigen_seqidxs=None, nr_runs=5, patch_mode=False, max_distance_angstrom="10.0",
-                        patch_angradius=6.0, max_patch_size=4, maxcover_mode=False,
-                        epipara_aang_distance=5, msa_directory=None, num_ab_chains=2):
+                        patch_angradius=6.0, max_patch_size=4, epipara_aang_distance=5, msa_directory=None, num_ab_chains=2):
 
     """
     fasta_path: Filepath to the fasta file. Both antigen and antibody chains are expected.
@@ -200,7 +201,7 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
             pred_epitope_residues = [pred_epitope_residue] + [res_bp3_scores[j][0] for j in range(patch_size - 1)]
 
 
-        # just use one antigen residue as restraint
+        # just use one antigen residue as restraint (same as in preprint)
         else: pred_epitope_residues = [pred_epitope_residue]
 
         # adjust residue indexing (PDB index starts index 1. )
@@ -218,52 +219,3 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
  
     outfile = open(outdir / "done.txt", "w")
     outfile.close()
-
-def abag_make_pocket_restraints(epitope_residues, restraint_outfile, antibody_chain_letters, confidence="1.0",
-                                min_distance_angstrom="0.0", max_distance_angstrom="10.0"):
-    """
-    Generate restraints from fasta files and crystal dataset.
-
-    Args:
-        fasta_files (list): List of fasta file paths.
-        crystaldataset (Path): Path to the crystal dataset directory.
-        restraint_dir (Path): Directory to save the restraint files.
-        xepi (int): Number of top epitopes to consider.
-
-        confidence (str): Confidence level. Default is 1.0.
-        min_distance_angstrom (str): Minimum distance in angstroms. Default is 0.0.
-        max_distance_angstrom (str): Maximum distance in angstroms. Defualt is 10.0.
-    """
-
-    connection_type = "pocket"
-    chai_restraint_header = "chainA,res_idxA,chainB,res_idxB,connection_type,confidence,min_distance_angstrom,max_distance_angstrom,comment,restraint_id"
-
-    # Collect antigen restraints
-    restraints = []
-    for j, epi in enumerate(epitope_residues):
-
-        res, antigen_chain_letter, residx = epi
-        antigen_residx = f"{res}{residx}"
-
-        # antibody chain restraints 
-        abchain1_restraint = ",".join([
-            antibody_chain_letters[0], "", antigen_chain_letter, antigen_residx, connection_type,
-            confidence, min_distance_angstrom, max_distance_angstrom, "antibodyc1-antigen"
-        ])
-        abchain2_restraint = ",".join([
-            antibody_chain_letters[1], "", antigen_chain_letter, antigen_residx, connection_type,
-            confidence, min_distance_angstrom, max_distance_angstrom, "antibodyc2-antigen"
-        ])
-
-        # Collect restraints
-        restraints.append(abchain1_restraint)
-        restraints.append(abchain2_restraint)
-
-    # Add restraint ids
-    nr_restraints = len(restraints)
-    restraints = [f"{restraints[j]},restraint_{j}" for j in range(nr_restraints)]
-
-    # Write restraint output file
-    restraint_out = "\n".join([chai_restraint_header] + restraints)
-    with open(restraint_outfile, "w") as outfile:
-        outfile.write(restraint_out)

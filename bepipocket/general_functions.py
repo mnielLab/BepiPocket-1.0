@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 import pickle
 import shutil
-import bisect
+
 MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
 sys.path.append(MODULE_DIR)
 
@@ -121,39 +121,3 @@ def copy_from_to_files(from_files, to_files, rm_after_copy=False):
                 print(f"Removed {from_file}") 
 
         else: print(f"Destination file with same name already exists: {to_file}. Skipping")
-
-def bin_data_left_inclusive(data, bins=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], bin_size=None, bin_idx=1, return_index_dict=False):
-    """
-    Bins data into intervals that are [lower_bound, upper_bound),
-    i.e., including the lower bound and excluding the upper bound.
-    
-    Example:
-    0.0 <= x < 0.1 --> in bin 0.0
-    0.1 <= x < 0.2 --> in bin 0.1
-    ...
-    0.9 <= x < 1.0 --> in bin 0.9
-    """
-    # Initialize empty dicts
-    bin_dict = {bin_val: [] for bin_val in bins[:-1]}  # Last bin is upper bound, not inclusive
-    index_dict = {bin_val: [] for bin_val in bins[:-1]}
-    nr_d = len(data)
-    
-    for i in range(nr_d):
-        d = data[i]
-        val_to_bin = d[bin_idx] if bin_idx is not None else d
-        bin_index = bisect.bisect_right(bins, val_to_bin) - 1
-        
-        # Skip if outside the bin range (e.g., val == bins[-1])
-        if bin_index < 0 or bin_index >= len(bins) - 1:
-            continue
-        
-        bin_key = bins[bin_index]
-        bin_dict[bin_key].append(d)
-        index_dict[bin_key].append(i)
-
-    # Reduce bin size if specified
-    if bin_size is not None:
-        for k in bin_dict.keys():
-            bin_dict[k] = bin_dict[k][:bin_size]
-
-    return index_dict if return_index_dict else bin_dict
