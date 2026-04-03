@@ -1,5 +1,6 @@
 ### IMPORTS ###
 from pathlib import Path
+import sys
 MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
 sys.path.append(MODULE_DIR)
 
