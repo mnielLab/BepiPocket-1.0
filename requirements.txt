@@ -1,4 +1,4 @@
-git+https://github.com/chaidiscovery/chai-lab.git
+chai_lab==0.6.1
 bp3==0.0.12.7
 plotly==6.0.1
 fair-esm==2.0.0
