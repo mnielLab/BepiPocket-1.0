@@ -30,6 +30,7 @@ This tool requires Python 3.10 It should work for later python versions as well.
 $ conda create -n bepipocket python=3.10
 $ conda activate bepipocket
 $ conda install pip
+$ conda install bioconda::anarci
 ```
 ### Install Pip Packages 
 First, download requirements.txt file. Then,
