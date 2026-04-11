@@ -13,8 +13,8 @@ from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
 from general_functions import load_pickle_file
-from restraint_utilities import abag_make_pocket_restraints
-
+from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints
+from anarci_utilities import get_hcdr3_center_residue
 
 ### STATIC VARIABLES ###
 
@@ -45,11 +45,11 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
 
 
     return antigen_sequences, avg_ensemble_probs
-    
 
 def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200,
                         overwrite_earlier_jobcontent=False, antigen_seqidxs=None, nr_runs=5, patch_mode=False, max_distance_angstrom="10.0",
-                        patch_angradius=6.0, max_patch_size=4, epipara_aang_distance=5, msa_directory=None, num_ab_chains=2):
+                        patch_angradius=6.0, max_patch_size=4, epipara_aang_distance=5, msa_directory=None, num_ab_chains=2,
+                        hcdr3_mode=False):
 
     """
     fasta_path: Filepath to the fasta file. Both antigen and antibody chains are expected.
@@ -81,7 +81,8 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         outfile.close()
 
     # get epitope contacts of initial structure
-    init_epitope_contacts, _ = collect_epitope_contacts(list(Path(outdir / "seed0").glob("pred*")), epipara_aang_distance=epipara_aang_distance)
+    init_structures = list(Path(outdir / "seed0").glob("pred*"))
+    init_epitope_contacts, _ = collect_epitope_contacts(init_structures, epipara_aang_distance=epipara_aang_distance)
     all_epitope_contacts = init_epitope_contacts
 
     # antibody and antigen letters
@@ -89,13 +90,18 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     nr_chains = len(accs_and_seqs)
     structure_letters = [ascii_uppercase[i] for i in range(nr_chains)]
     antigen_letters, antibody_letters = structure_letters[:-num_ab_chains], structure_letters[-num_ab_chains:]
+    
+    # use anarci to center hcdr3 
+    if hcdr3_mode:
+        anarci_antigen_letters, light_chain_letter, heavy_chain_letter, center_hcdr3_residue = get_hcdr3_center_residue(fasta_path, outdir / "anarci_run", structure_letters)
+
     aa_chainletter_residxs = []
     for i in range(nr_chains):
         acc, seq = accs_and_seqs[i]
         structure_letter = structure_letters[i]
         aa_chainletter_residx = [(aa, structure_letter, j) for j, aa in enumerate(seq)]
         aa_chainletter_residxs.append(aa_chainletter_residx)
-
+     
     # get antigen fasta entries
     if antigen_seqidxs is None:
         ag_accs_and_seqs = [acc_seq for acc_seq in accs_and_seqs[:-num_ab_chains]] # assume antibody chains are always the last entries
@@ -152,7 +158,6 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     # sort antigen residues by BepiPred-3.0 score
     sorted_antigen_residue_list = [k[0] for k in sorted(ag_aa_chainletter_residxs_bp3_scores.items(), key=lambda item: item[1], reverse=True)]
     
-  
     restraintsdir = outdir / "restraints"
     if not restraintsdir.is_dir(): restraintsdir.mkdir(parents=True)
     
@@ -165,6 +170,7 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
             for f in out_path.glob("*"): f.unlink()
 
         # check how many files are in seed (should be 10: 5 .cif (structure) + 5 .npz (confidence))
+        run_file_check = False
         if out_path.is_dir():
             nr_score_files = len( list(out_path.glob("*.npz")) )
             nr_structure_files = len( list(out_path.glob("*.cif")) )
@@ -176,39 +182,23 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         if run_file_check:
             print(f"Skipping. Found all structure and conf. files for {i} at {str(out_path)}.")
             continue
-
+        
+        # using one antigen residue as restraint (same as in preprint)
         pred_epitope_residue = sorted_antigen_residue_list[i] 
-         
-        if patch_mode:
-            # get epitope residues within XÅ of predicted epitope residue center
-            epitope_residue_patch_residues = get_epitope_patch_residues(rank1_structure, pred_epitope_residue, patch_angradius=patch_angradius)
-            
-            # adjust index to match bepipred-3.0 score lookup
-            epitope_residue_patch_residues = [(e[0], e[1], e[2]-1) for e in epitope_residue_patch_residues]
-            
-            # remove center residue
-            idx = epitope_residue_patch_residues.index(pred_epitope_residue)
-            epitope_residue_patch_residues = epitope_residue_patch_residues[:idx] + epitope_residue_patch_residues[idx+1:] 
-
-            # sort surface patch residues by highest bepipred3 score
-            res_bp3_scores = [(res, ag_aa_chainletter_residxs_bp3_scores[res]) for res in epitope_residue_patch_residues]
-            res_bp3_scores = sorted(res_bp3_scores, key=lambda item: item[1], reverse=True)
-            
-            # if Y surface patch residues detected at X Å distance, less than max_patch_size, use Y surface patch residues
-            patch_size = min([max_patch_size, len(res_bp3_scores)])
-
-            # surface patch residues
-            pred_epitope_residues = [pred_epitope_residue] + [res_bp3_scores[j][0] for j in range(patch_size - 1)]
-
-
-        # just use one antigen residue as restraint (same as in preprint)
-        else: pred_epitope_residues = [pred_epitope_residue]
-
+        pred_epitope_residues = [pred_epitope_residue]
         # adjust residue indexing (PDB index starts index 1. )
-        pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]        
+        pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]      
+        
+        # restraint outfile
         restraint_file = restraintsdir / f"bepipredmap{i}.restraints" 
-        abag_make_pocket_restraints(pred_epitope_residues, restraint_file, antibody_letters,
-                                    max_distance_angstrom=max_distance_angstrom)
+      
+        if hcdr3_mode:
+            abag_lightpocket_hcdr3_restraints(pred_epitope_residues, restraint_file, light_chain_letter, center_hcdr3_residue, confidence="1.0",
+                                    min_distance_angstrom="0.0", max_distance_angstrom="10.0")
+
+        # normal mode
+        else:
+            abag_make_pocket_restraints(pred_epitope_residues, restraint_file, antibody_letters, max_distance_angstrom=max_distance_angstrom)
 
         run_inference(fasta_file=fasta_path, output_dir=out_path,
                         constraint_path=restraint_file,
