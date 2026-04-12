@@ -391,7 +391,7 @@ def get_epitope_patch_residues(pred_structure_file, pred_epitope_residue, antige
 
 def collect_epitope_contacts(pred_structure_files, antigen_seqidxs=None, epipara_aang_distance=4):
 
-    pred_epitope_contacts = []
+    pred_epitope_contacts, pred_structure_chains = [], []
     
     for pred_structure_file in pred_structure_files:
 

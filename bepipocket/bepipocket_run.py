@@ -1,5 +1,4 @@
 ### IMPORTS ###
-
 from pathlib import Path
 import sys
 MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
@@ -66,7 +65,7 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     epipara_ang_distance=5Å (using the same Å distance used to define contacts for DockQ)
     
     """
-
+    outdir.mkdir(parents=True, exist_ok=True)
     if not Path(outdir / "initialrun_done.txt").is_file():
 
         ## initial run with no surface area restraint ##

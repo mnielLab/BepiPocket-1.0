@@ -4,11 +4,9 @@ from pathlib import Path
 import sys
 MODULE_DIR = str(Path(Path(__file__).parent.resolve()))
 sys.path.append(MODULE_DIR)
-
 import numpy as np
 import string
 import pickle
-
 from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts

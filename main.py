@@ -15,7 +15,7 @@ parser.add_argument("-o", required=True, action="store", dest="out_dir", type=Pa
 parser.add_argument("-pred", action="store", choices=["normal", "restraint", "bepipocket", "random"], required=True, dest="pred", help="Chai-1 structure modelling mode to run.")
 parser.add_argument("-nr_runs", action="store", dest="nr_runs", type=int, default=6, help="Number of runs for Chai-1 structure modelling.")
 parser.add_argument("-agscores", action="store", dest="agscores", default=None, type=Path, help="Path to dict containing precomputed antigen sequence score (BepiPred-3.0 etc.): {FGKAJ...:array([0.4,,0.3,0.5,0.6,0.8...])..}.")
-parser.add_argument("-patch_mode", action="store_true", dest="patch_mode", help="Use surface patch with high epitope propensity for restraint runs for BepiPocket or DiscoPocket. Note: This approach has not been benchmarked yet).")
+parser.add_argument("-hcdr3_mode", action="store_true", dest="hcdr3_mode", help="Create contact restraints between HCDR3 center reisidues and predicted BepiPocket or DiscoPocket residues.")
 #parser.add_argument("-disco3scores", action="store", dest="disco3scores", default=None, type=Path, help="Path to dict containing precomputed discotope-3 scores")
 parser.add_argument("-msa_directory", action="store", dest="msa_directory", default=None, type=Path, help="Look for MSA .pqt files with sequence hash filenames mathcing query sequences in this directory.")
 
@@ -29,26 +29,22 @@ nr_runs= args.nr_runs
 
 agscores = args.agscores
 #disco3scores = args.disco3scores #TODO
-patch_mode = args.patch_mode
+hcdr3_mode = args.hcdr3_mode
 msa_directory = args.msa_directory
 
 # chai-1 normal prediction mode 
 if pred == "normal":
     normal_run(fasta_file, out_dir, overwrite_earlier_jobcontent=False, seeds=nr_runs, msa_directory=msa_directory)
-
 # chai-1 restraint prediction mode (User defined restraints, as described in Chai-1 documentation)
 elif pred == "restraint":
     normal_run(fasta_file, out_dir, restraint_file=restraint_file, overwrite_earlier_jobcontent=False, nr_runs=nr_runs, msa_directory=msa_directory)
-
 # chai-1 bepipocket (use BepiPred-3.0 to guide antibody-epitope restraints)
 elif pred == "bepipocket":
-    bepipocket_run(fasta_file, out_dir, patch_mode=patch_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory)
+    bepipocket_run(fasta_file, out_dir, hcdr3_mode=hcdr3_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory)
 
 # chai-1 randompocket (use random guidance for antibody-epitope restraint (baseline) )
 elif pred == "random":
-    randompocket_run(fasta_file, out_dir, patch_mode=patch_mode, nr_runs=nr_runs, random_score_lookup=agscores, msa_directory=msa_directory)
-
-
+    randompocket_run(fasta_file, out_dir, nr_runs=nr_runs, random_score_lookup=agscores, msa_directory=msa_directory)
 
 # chai-1 discopocket (use DiscoTope-3.0 to guide antibody-epitope restraints)
 #TODO 
