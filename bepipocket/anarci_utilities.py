@@ -1,11 +1,7 @@
 ### IMPORTS ###
 import sys
-import pdb
 from pathlib import Path
 import subprocess
-MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
-sys.path.append(MODULE_DIR)
-
 
 ### FUNCTIONS ###
 
@@ -118,13 +114,21 @@ def parse_anarci_output(anarci_outfile):
                 continue
 
             chain_type = parts[0]
-            position = parts[1]
-            residue = parts[2]
 
-            if chain_type not in ["H", "K", "L"]:
+            # standard row: H 105 A
+            if len(parts) == 3:
+                position = parts[1]
+                residue = parts[2]
+
+            # insertion row: H 111 A K  -> position 111A, residue K
+            elif len(parts) == 4:
+                position = parts[1] + parts[2]
+                residue = parts[3]
+
+            else:
                 continue
 
-            if residue == "-":
+            if chain_type not in ["H", "K", "L"]:
                 continue
 
             sequences[current_id].append((residue, position, chain_type))
@@ -178,15 +182,20 @@ def extract_cdr_regions(sequence_entries, original_sequence, scheme="imgt"):
         "CDR3": []
     }
 
-    numbered_sequence = "".join([entry[0] for entry in sequence_entries])
+    # only real residues belong to the original sequence
+    real_sequence_entries = [entry for entry in sequence_entries if entry[0] != "-"]
+    numbered_sequence = "".join([entry[0] for entry in real_sequence_entries])
+
     start_idx = original_sequence.find(numbered_sequence)
 
     if start_idx == -1:
+        print("ORIGINAL_SEQUENCE:", original_sequence)
+        print("ANARCI_NUMBERED_SEQUENCE:", numbered_sequence)
         raise ValueError("ANARCI-numbered sequence not found in original sequence")
 
-    for i in range(len(sequence_entries)):
+    for i, entry in enumerate(real_sequence_entries):
 
-        residue, position, chain_type = sequence_entries[i]
+        residue, position, chain_type = entry
         pos_num = int("".join([c for c in position if c.isdigit()]))
         original_residx = start_idx + i
 
@@ -201,7 +210,6 @@ def extract_cdr_regions(sequence_entries, original_sequence, scheme="imgt"):
 
     return cdrs
 
-
 def anarci_extract_cdrs(fasta_path, outdir, scheme="imgt"):
 
     """
@@ -213,8 +221,9 @@ def anarci_extract_cdrs(fasta_path, outdir, scheme="imgt"):
         - keep non-antibody sequences as None
     """
 
+    if not outdir.is_dir():
+        outdir.mkdir(parents=True)
 
-    if not outdir.is_dir(): outdir.mkdir(parents=True)
     anarci_outfile = outdir / "anarci_output.txt"
 
     run_anarci(fasta_path, anarci_outfile, scheme=scheme)
@@ -226,10 +235,16 @@ def anarci_extract_cdrs(fasta_path, outdir, scheme="imgt"):
 
     for seq_id, seq in fasta_entries:
 
-        if seq_id not in parsed_sequences or not parsed_sequences[seq_id]:
+        if seq_id not in parsed_sequences:
             results.append((seq_id, None))
             continue
+
         sequence_entries = parsed_sequences[seq_id]
+
+        if not sequence_entries:
+            results.append((seq_id, None))
+            continue
+
         chain_type = identify_chain_type(sequence_entries)
         cdrs = extract_cdr_regions(sequence_entries, seq, scheme=scheme)
 
@@ -244,6 +259,7 @@ def anarci_extract_cdrs(fasta_path, outdir, scheme="imgt"):
         }))
 
     return results
+
 
 
 def get_hcdr3_center_residue(fasta_path, outdir, structure_letters):
