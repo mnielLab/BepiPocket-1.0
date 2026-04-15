@@ -7,7 +7,7 @@ sys.path.append(MODULE_DIR)
 import numpy as np
 import string
 import pickle
-#from chai_lab.chai1 import run_inference
+from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
 from general_functions import load_pickle_file, _run_complete, _wipe_dir

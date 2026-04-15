@@ -7,7 +7,7 @@ import numpy as np
 import string
 import pickle
 import torch
-#from chai_lab.chai1 import run_inference
+from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
