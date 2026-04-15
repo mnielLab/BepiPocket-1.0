@@ -7,11 +7,11 @@ import numpy as np
 import string
 import pickle
 import torch
-from chai_lab.chai1 import run_inference
+#from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
-from general_functions import load_pickle_file
+from general_functions import load_pickle_file, _run_complete, _wipe_dir
 from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints
 from anarci_utilities import get_hcdr3_center_residue
 
@@ -66,10 +66,14 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     
     """
     outdir.mkdir(parents=True, exist_ok=True)
-    if not Path(outdir / "initialrun_done.txt").is_file():
+    
+    out_path = outdir / "seed0"
+    if not _run_complete(out_path):
 
-        ## initial run with no surface area restraint ##
-        out_path = outdir / "seed0"
+        # if run terminated prematurely, re-run
+        if out_path.is_dir(): _wipe_dir(out_path)
+
+        ## initial run with no surface area restraint ##     
         run_inference(fasta_file=fasta_path, output_dir=out_path,
                           num_trunk_recycles=num_trunk_recycles,
                           num_diffn_timesteps=num_diffn_timesteps,
@@ -159,29 +163,27 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     
     restraintsdir = outdir / "restraints"
     if not restraintsdir.is_dir(): restraintsdir.mkdir(parents=True)
-    
-    for i in range(nr_runs - 1):
+
+    max_runs = min(nr_runs - 1, len(sorted_antigen_residue_list))
+    for i in range(max_runs):
 
         out_path = outdir / f"bepipredmap{i}"
 
-        # delete results from earlier run (if wanting to re-run evaluation)
+        # delete results from earlier run
         if out_path.is_dir() and overwrite_earlier_jobcontent:
-            for f in out_path.glob("*"): f.unlink()
+            _wipe_dir(out_path)
 
-        # check how many files are in seed (should be 10: 5 .cif (structure) + 5 .npz (confidence))
-        run_file_check = False
-        if out_path.is_dir():
-            nr_score_files = len( list(out_path.glob("*.npz")) )
-            nr_structure_files = len( list(out_path.glob("*.cif")) )
-            if nr_structure_files == 5 and nr_score_files == 5: 
-                run_file_check = True
-
-        else: run_file_check = False
-
+        # check how many files are in seed
+        run_file_check = _run_complete(out_path)
+      
+         # already completed run, skip
         if run_file_check:
-            print(f"Skipping. Found all structure and conf. files for {i} at {str(out_path)}.")
+            print(f"Skipping. Found all structure and conf. files for run {i} at {out_path}.")
             continue
-        
+
+        # if run terminated prematurely, re-run
+        if out_path.is_dir() and not run_file_check: _wipe_dir(out_path)
+            
         # using one antigen residue as restraint (same as in preprint)
         pred_epitope_residue = sorted_antigen_residue_list[i] 
         pred_epitope_residues = [pred_epitope_residue]

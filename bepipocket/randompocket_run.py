@@ -7,10 +7,10 @@ sys.path.append(MODULE_DIR)
 import numpy as np
 import string
 import pickle
-from chai_lab.chai1 import run_inference
+#from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
-from general_functions import load_pickle_file
+from general_functions import load_pickle_file, _run_complete, _wipe_dir
 from restraint_utilities import abag_make_pocket_restraints
 
 ### STATIC VARIABLES ###
@@ -71,11 +71,15 @@ def randompocket_run(
     """
 
     outdir = Path(outdir)
+    
+    out_path = outdir / "seed0"
+    if not _run_complete(out_path):
 
-    if not Path(outdir / "initialrun_done.txt").is_file():
+        # if run terminated prematurely, re-run
+        if out_path.is_dir(): _wipe_dir(out_path)
+
 
         ## initial run with no surface area restraint ##
-        out_path = outdir / "seed0"
         run_inference(
             fasta_file=fasta_path,
             output_dir=out_path,
@@ -180,64 +184,28 @@ def randompocket_run(
     if not restraintsdir.is_dir():
         restraintsdir.mkdir(parents=True)
 
-    for i in range(nr_runs - 1):
+    max_runs = min(nr_runs - 1, len(sorted_antigen_residue_list))
+    for i in range(max_runs):
 
         out_path = outdir / f"randommap{i}"
 
         # delete results from earlier run
         if out_path.is_dir() and overwrite_earlier_jobcontent:
-            for f in out_path.glob("*"):
-                f.unlink()
+            _wipe_dir(out_path)
 
         # check how many files are in seed
-        if out_path.is_dir():
-            nr_score_files = len(list(out_path.glob("*.npz")))
-            nr_structure_files = len(list(out_path.glob("*.cif")))
-            if nr_structure_files == 5 and nr_score_files == 5:
-                run_file_check = True
-            else:
-                run_file_check = False
-        else:
-            run_file_check = False
-
+        run_file_check = _run_complete(out_path)
+      
+         # already completed run, skip
         if run_file_check:
-            print(f"Skipping. Found all structure and conf. files for {i} at {str(out_path)}.")
+            print(f"Skipping. Found all structure and conf. files for run {i} at {out_path}.")
             continue
 
+        # if run terminated prematurely, re-run
+        if out_path.is_dir() and not run_file_check: _wipe_dir(out_path)
+        
         pred_epitope_residue = sorted_antigen_residue_list[i]
-
-        if patch_mode:
-            # get epitope residues within XÅ of predicted epitope residue center
-            epitope_residue_patch_residues = get_epitope_patch_residues(
-                rank1_structure,
-                pred_epitope_residue,
-                patch_angradius=patch_angradius,
-            )
-
-            # adjust index to match score lookup
-            epitope_residue_patch_residues = [(e[0], e[1], e[2] - 1) for e in epitope_residue_patch_residues]
-
-            # remove center residue
-            idx = epitope_residue_patch_residues.index(pred_epitope_residue)
-            epitope_residue_patch_residues = (
-                epitope_residue_patch_residues[:idx] + epitope_residue_patch_residues[idx + 1:]
-            )
-
-            # sort surface patch residues by highest random score
-            res_random_scores = [
-                (res, ag_aa_chainletter_residxs_random_scores[res])
-                for res in epitope_residue_patch_residues
-            ]
-            res_random_scores = sorted(res_random_scores, key=lambda item: item[1], reverse=True)
-
-            # use up to max_patch_size residues
-            patch_size = min([max_patch_size, len(res_random_scores)])
-
-            pred_epitope_residues = [pred_epitope_residue] + [
-                res_random_scores[j][0] for j in range(patch_size - 1)
-            ]
-        else:
-            pred_epitope_residues = [pred_epitope_residue]
+        pred_epitope_residues = [pred_epitope_residue]
 
         # adjust residue indexing (PDB index starts at 1)
         pred_epitope_residues = [(e[0], e[1], e[2] + 1) for e in pred_epitope_residues]

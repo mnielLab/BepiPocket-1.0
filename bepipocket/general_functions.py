@@ -121,3 +121,17 @@ def copy_from_to_files(from_files, to_files, rm_after_copy=False):
                 print(f"Removed {from_file}") 
 
         else: print(f"Destination file with same name already exists: {to_file}. Skipping")
+
+
+def _run_complete(p: Path) -> bool:
+    if not p.is_dir():
+        return False
+    return (len(list(p.glob("*.cif"))) == 5) and (len(list(p.glob("*.npz"))) == 5)
+
+def _wipe_dir(p: Path) -> None:
+    for f in p.glob("*"):
+        if f.is_file():
+            f.unlink()
+        else:
+            import shutil
+            shutil.rmtree(f)
