@@ -7,8 +7,7 @@ Varying seeds and diffusion samples does not guarantee that a diverse set of bin
 This vastly increase diversity of explored antibody binding sites as well as allowing Chai-1 to find substantialy more accurate AbAg structures with high confidence.
 
 ### TODOS
-* **TODO**: Upload MMseqs2 MSA Code. MSAs can be provide in the same format used as Chai-1 (.pqt). But are not automatically created on inference. Need to add this code.
-* **TODO**: Merge in DiscoTope-3.0 package environment.
+* **TODO**: Upload MMseqs2 MSA Code. MSAs can be provide in the same format used as Chai-1 (.pqt). But are not automatically created on inference. Need to add this code.nt.
 
 ## License 
 BepiPocket is a tool developed by the Health Tech section at Technical University of Denmark (DTU). The code and data can be used freely by academic groups for non-commercial purposes.
@@ -37,7 +36,7 @@ First, download requirements.txt file. Then,
 ```
 $ pip install -r requirements.txt # install package dependencies
 $ pip install git+https://github.com/mnielLab/BepiPocket-1.0.git
-
+$ pip install --no-deps git+https://github.com/Magnushhoie/DiscoTope-3.0.git
 ```
 ## Usage 
 After installation, BepiPocket can be run with the script 'main.py'. 
