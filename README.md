@@ -24,7 +24,7 @@ If you plan to use these tools for any for-profit application, you are required 
 ##
 
 ### Create Conda Environment
-This tool requires Python 3.10 It should work for later python versions as well.
+We recommend Python version 3.11 for this tool.
 ```
 $ conda create -n bepipocket python=3.11
 $ conda activate bepipocket
