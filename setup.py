@@ -8,6 +8,8 @@ setup(
     package_data={
         'bepipocket': [
             'models/hmm_antibody_identification/*.hmm' # include hmm models for antibody identification
+            'models/bepipocket/models/discotope3_models/*' # include DiscoTope-3 models for DiscoPocket Method
+
         ]
     },
     install_requires=[

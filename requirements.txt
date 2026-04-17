@@ -3,3 +3,13 @@ bp3==0.0.12.7
 plotly==6.0.1
 fair-esm==2.0.0
 hmmer==3.4.0.0
+
+torch_geometric==2.7.*
+biopython==1.86
+biotite==1.6.*
+xgboost<=3.1.2
+pygam==0.12.*
+numpy<=2.4.3
+pandas<=3.0.1
+joblib<=1.5.3
+scikit-learn==1.7.*

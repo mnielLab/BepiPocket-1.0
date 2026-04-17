@@ -1,0 +1,23 @@
+{
+    "dataset_path": "data/processed/new/bp3_train_valid_seqs_af2/dataset.pt",
+    "dataset_path_2": "data/processed/new/bp3_train_valid_seqs_solved/dataset.pt",
+    "dataset_path_test": "data/processed/new/bp3_train_valid_seqs_af2/dataset.pt",
+    "models_dir": "models/new6/bp3_train_valid_seqs_both",
+    "rsa_prob_sampling_path": "",
+    "sampling_strategy": "fixed_pos_neg",
+    "plddt_threshold_mean": 85,
+    "plddt_threshold_res": 70,
+    "epi_threshold_min": 5,
+    "epi_threshold_max": 75,
+    "length_threshold_max": 10000,
+    "rsa_threshold": 0.0,
+    "pos_ratio": 0.7,
+    "neg_factor": 2.5,
+    "filter_features_flag": "False",
+    "num_models": 100,
+    "tree_n_estimators": 200,
+    "tree_max_depth": 4,
+    "tree_learning_rate": 0.3,
+    "tree_subsample": 0.5,
+    "verbose": 0
+}

@@ -27,7 +27,7 @@ If you plan to use these tools for any for-profit application, you are required 
 ### Create Conda Environment
 This tool requires Python 3.10 It should work for later python versions as well.
 ```
-$ conda create -n bepipocket python=3.10
+$ conda create -n bepipocket python=3.11
 $ conda activate bepipocket
 $ conda install pip
 $ conda install bioconda::anarci
@@ -37,6 +37,7 @@ First, download requirements.txt file. Then,
 ```
 $ pip install -r requirements.txt # install package dependencies
 $ pip install git+https://github.com/mnielLab/BepiPocket-1.0.git
+
 ```
 ## Usage 
 After installation, BepiPocket can be run with the script 'main.py'. 

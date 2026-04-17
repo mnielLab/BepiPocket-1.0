@@ -1,0 +1,1 @@
+DiscoTope-3.0 weights copied from https://github.com/Magnushhoie/DiscoTope-3.0.git 

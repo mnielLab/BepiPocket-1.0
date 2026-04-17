@@ -1,1 +1,2 @@
 include bepipocket/models/hmm_antibody_identification/*.hmm
+include bepipocket/models/discotope3_models/*
