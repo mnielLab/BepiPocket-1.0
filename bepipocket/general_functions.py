@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import pickle
 import shutil
+import numpy as np
 
 MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
 sys.path.append(MODULE_DIR)
@@ -135,3 +136,17 @@ def _wipe_dir(p: Path) -> None:
         else:
             import shutil
             shutil.rmtree(f)
+
+def get_highest_confidence_structure(out_path):
+    score_files = list(out_path.glob("scores*"))
+    scores = [np.load(f) for f in score_files]
+    scores = np.asarray([0.8 * s["iptm"][0] + 0.2 * s["ptm"][0] for s in scores])
+
+    best_idx = np.argmax(scores)
+    best_score = scores[best_idx]
+    best_scorefile = score_files[best_idx]
+
+    rank1_structure = best_scorefile.parent / f"{best_scorefile.stem.replace('scores', 'pred')}.cif"
+    print(f"Structure with highest confidence {rank1_structure} with {best_score}")
+
+    return rank1_structure

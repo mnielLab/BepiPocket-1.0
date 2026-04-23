@@ -3,15 +3,15 @@ from pathlib import Path
 import sys
 MODULE_DIR = str( Path( Path(__file__).parent.resolve() ) )
 sys.path.append(MODULE_DIR)
-import numpy as np
 import string
+import pdb
 import pickle
 import torch
 from chai_lab.chai1 import run_inference
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
-from biopdb_utilities import get_epitope_patch_residues, collect_epitope_contacts
-from general_functions import load_pickle_file, _run_complete, _wipe_dir
+from biopdb_utilities import prepare_epitope_patch_search, get_epitope_patch_residues
+from general_functions import load_pickle_file, _run_complete, _wipe_dir, get_highest_confidence_structure
 from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints
 from anarci_utilities import get_hcdr3_center_residue
 
@@ -20,6 +20,60 @@ from anarci_utilities import get_hcdr3_center_residue
 ascii_uppercase = list(string.ascii_uppercase)
 
 ### FUNCTIONS ###
+
+def get_antigen_data_from_fasta(fasta_path, num_ab_chains):
+    accs_and_seqs = read_accs_and_sequences_from_fasta(fasta_path)
+    nr_chains = len(accs_and_seqs)
+    structure_letters = [ascii_uppercase[i] for i in range(nr_chains)] # will crash for (nr_chains > 26), very unlikely
+    antibody_letters = structure_letters[-num_ab_chains:]
+
+    aa_chainletter_residxs = []
+    for i in range(nr_chains):
+        seq = accs_and_seqs[i][1]
+        structure_letter = structure_letters[i]
+        aa_chainletter_residx = [(aa, structure_letter, j) for j, aa in enumerate(seq)]
+        aa_chainletter_residxs.append(aa_chainletter_residx)
+
+    
+    if num_ab_chains < 1 or num_ab_chains >= len(accs_and_seqs):
+        raise ValueError(f"num_ab_chains={num_ab_chains} is invalid for {len(accs_and_seqs)} chains")
+
+    ag_accs_and_seqs = accs_and_seqs[:-num_ab_chains]
+    ag_aa_chainletter_residxs = aa_chainletter_residxs[:-num_ab_chains]
+    ag_seqs = [d[1] for d in ag_accs_and_seqs]
+
+    return structure_letters, antibody_letters, ag_aa_chainletter_residxs, ag_seqs
+
+def get_ag_residue_bp3_scores(fasta_path, outdir, ag_seqs, ag_aa_chainletter_residxs, bp3_score_lookup=None):
+    bp3_score_lookup_path = outdir / "bp3_score_lookup.pickle"
+
+    if bp3_score_lookup is not None:
+        bp3_score_lookup = load_pickle_file(bp3_score_lookup)
+    elif bp3_score_lookup_path.is_file():
+        bp3_score_lookup = load_pickle_file(bp3_score_lookup_path)
+    else:
+        print("Computing BepiPred-3.0 scores")
+        bp3scored_seqs, bp3_scores = run_bepipred3_fasta(fasta_path, outdir)
+        bp3_score_lookup = {k: v for k, v in zip(bp3scored_seqs, bp3_scores)}
+
+    if not bp3_score_lookup_path.is_file():
+        with open(bp3_score_lookup_path, "wb") as outfile:
+            pickle.dump(bp3_score_lookup, outfile)
+
+    if len(set(ag_seqs) - set(bp3_score_lookup.keys())) != 0:
+        print(f"For {fasta_path}, the BepiPred-3.0 scores for some antigen sequences were not found in lookup. Recomputing scores")
+        bp3scored_seqs, bp3_scores = run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None)
+        bp3_score_lookup = {k: v for k, v in zip(bp3scored_seqs, bp3_scores)}
+        with open(bp3_score_lookup_path, "wb") as outfile:
+            pickle.dump(bp3_score_lookup, outfile)
+
+    ag_aa_chainletter_residxs_bp3_scores = {}
+    for i, ag_seq in enumerate(ag_seqs):
+        bp3_scores = bp3_score_lookup[ag_seq]
+        for j, bp3_score in enumerate(bp3_scores):
+            ag_aa_chainletter_residxs_bp3_scores[ag_aa_chainletter_residxs[i][j]] = bp3_score
+
+    return ag_aa_chainletter_residxs_bp3_scores
 
 def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodings=True):
 
@@ -32,7 +86,6 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
 
     # collect and average probabilities
     ensemble_probs = antigens.ensemble_probs
-    num_of_seqs = len(ensemble_probs)
     avg_ensemble_probs = []
     for ensemble_prob in ensemble_probs:
         avg_ensemble_probs.append(torch.mean(torch.stack(ensemble_prob, axis=1), axis=1).cpu().detach().numpy())
@@ -45,10 +98,35 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
 
     return antigen_sequences, avg_ensemble_probs
 
-def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200,
-                        overwrite_earlier_jobcontent=False, antigen_seqidxs=None, nr_runs=5, patch_mode=False, max_distance_angstrom="10.0",
-                        patch_angradius=6.0, max_patch_size=4, epipara_aang_distance=5, msa_directory=None, num_ab_chains=2,
-                        hcdr3_mode=False):
+
+def spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores):
+    new_ranked_list = []
+    remaining_residues = sorted_antigen_residue_list[:]
+
+    while remaining_residues:
+        blocked_residues = set()
+        next_round = []
+
+        for ag_res in remaining_residues:
+            if ag_res in blocked_residues:
+                next_round.append(ag_res)
+                continue
+
+            new_ranked_list.append(ag_res)
+            blocked_residues.update(epitope_patch_lookup[ag_res])
+
+        remaining_residues = sorted(
+            next_round,
+            key=lambda ag_res: ag_aa_chainletter_residxs_bp3_scores[ag_res],
+            reverse=True,
+        )
+
+    return new_ranked_list
+
+
+
+def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200, overwrite_earlier_jobcontent=False,
+                   nr_runs=5, max_distance_angstrom="10.0", epipara_aang_distance=5, msa_directory=None, num_ab_chains=2, hcdr3_mode=False, hobohm_patchradius=None):
 
     """
     fasta_path: Filepath to the fasta file. Both antigen and antibody chains are expected.
@@ -80,94 +158,31 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
                           seed=0, use_esm_embeddings=True, msa_directory=msa_directory) 
 
         # write initial run done file 
-        outfile = open(outdir / "initialrun_done.txt", "w")
-        outfile.close()
+        (outdir / "initialrun_done.txt").write_text("")
 
-    # get epitope contacts of initial structure
-    init_structures = list(Path(outdir / "seed0").glob("pred*"))
-    init_epitope_contacts, _ = collect_epitope_contacts(init_structures, epipara_aang_distance=epipara_aang_distance)
-    all_epitope_contacts = init_epitope_contacts
-
-    # antibody and antigen letters
-    accs_and_seqs = read_accs_and_sequences_from_fasta(fasta_path)
-    nr_chains = len(accs_and_seqs)
-    structure_letters = [ascii_uppercase[i] for i in range(nr_chains)]
-    antigen_letters, antibody_letters = structure_letters[:-num_ab_chains], structure_letters[-num_ab_chains:]
-    
+    # get antigen data + antibody letters from fasta
+    structure_letters, antibody_letters, ag_aa_chainletter_residxs, ag_seqs = get_antigen_data_from_fasta(fasta_path, num_ab_chains)
     # use anarci to center hcdr3 
-    if hcdr3_mode:
-        anarci_antigen_letters, light_chain_letter, heavy_chain_letter, center_hcdr3_residue = get_hcdr3_center_residue(fasta_path, outdir / "anarci_run", structure_letters)
+    if hcdr3_mode: _, light_chain_letter, _, center_hcdr3_residue = get_hcdr3_center_residue(fasta_path, outdir / "anarci_run", structure_letters)
 
-    aa_chainletter_residxs = []
-    for i in range(nr_chains):
-        acc, seq = accs_and_seqs[i]
-        structure_letter = structure_letters[i]
-        aa_chainletter_residx = [(aa, structure_letter, j) for j, aa in enumerate(seq)]
-        aa_chainletter_residxs.append(aa_chainletter_residx)
-     
-    # get antigen fasta entries
-    if antigen_seqidxs is None:
-        ag_accs_and_seqs = [acc_seq for acc_seq in accs_and_seqs[:-num_ab_chains]] # assume antibody chains are always the last entries
-        ag_aa_chainletter_residxs = [aa_chainletter_residx for aa_chainletter_residx in aa_chainletter_residxs[:-num_ab_chains]]
-    else:
-        ag_accs_and_seqs = [accs_and_seqs[idx] for idx in antigen_seqidxs]
-        ag_aa_chainletter_residxs = [aa_chainletter_residxs[idx] for idx in antigen_seqidxs]
-    ag_seqs = [d[1] for d in ag_accs_and_seqs]
-
-    # identify highest confidence structure
-    out_path = outdir / "seed0"
-    score_files = list(out_path.glob("scores*"))
-    scores = [np.load(score_file) for score_file in score_files]
-    scores = np.asarray([0.8 * score["iptm"][0] + 0.2 * score["ptm"][0] for score in scores])
-    best_scoreidx = np.argmax(scores) 
-    best_score, best_scorefile = scores[best_scoreidx], score_files[best_scoreidx]
-    rank1_structure = best_scorefile.parent / f"{best_scorefile.stem.replace('scores', 'pred')}.cif"
-    print(f"Structure with highest confidence {rank1_structure} with {best_score}")
-
-    # bepipred3 score from user input
-    bp3_score_lookup_path = outdir / "bp3_score_lookup.pickle"
-    if bp3_score_lookup is not None:
-        bp3_score_lookup = load_pickle_file(bp3_score_lookup)
-    # bepipred3 score from previous run
-    elif bp3_score_lookup_path.is_file():
-        bp3_score_lookup = load_pickle_file(bp3_score_lookup_path)
-    # compute bepipred3 scores
-    else:
-        print("Computing BepiPred-3.0 scores")
-        bp3scored_seqs, bp3_scores = run_bepipred3_fasta(fasta_path, outdir) 
-        bp3_score_lookup = {k:v for k, v in zip(bp3scored_seqs, bp3_scores)}
-
-    # save bepipred3 run scores
-    if not bp3_score_lookup_path.is_file():
-        with open(bp3_score_lookup_path, "wb") as outfile: pickle.dump(bp3_score_lookup, outfile)
-    
-    # bepipred-3.0 scores not found, recompute 
-    bp3_scored_sequences = set(bp3_score_lookup.keys())
-    if len( set(ag_seqs) - bp3_scored_sequences ) != 0:
-        print(f"For {fasta_path}, the BepiPred-3.0 scores for some antigen sequences were not found in lookup. Recomputing scores")
-        bp3scored_seqs, bp3_scores = run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None) 
-        bp3_score_lookup = {k:v for k, v in zip(bp3scored_seqs, bp3_scores)}
-        with open(bp3_score_lookup_path, "wb") as outfile: pickle.dump(bp3_score_lookup, outfile)
-
-    ag_aa_chainletter_residxs_bp3_scores = {}
-    N1 = len(ag_seqs)
-    for i in  range(N1):
-        ag_seq = ag_seqs[i]
-        bp3_scores = bp3_score_lookup[ag_seq]
-        N2 = len(ag_seq)
-        for j in range(N2):
-            ag_aa_chainletter_residxs_bp3_scores[ ag_aa_chainletter_residxs[i][j] ] = bp3_scores[j]
-
-    # sort antigen residues by BepiPred-3.0 score
+    # get BepiPred-3.0 sorted score list
+    ag_aa_chainletter_residxs_bp3_scores = get_ag_residue_bp3_scores(fasta_path, outdir, ag_seqs, ag_aa_chainletter_residxs, bp3_score_lookup=bp3_score_lookup)
     sorted_antigen_residue_list = [k[0] for k in sorted(ag_aa_chainletter_residxs_bp3_scores.items(), key=lambda item: item[1], reverse=True)]
     
+    # diversify epitope ranking 
+    if hobohm_patchradius is not None:
+        rank1_structure_path = get_highest_confidence_structure(out_path)
+        residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(rank1_structure_path, num_ab_chains=num_ab_chains)
+        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=patch_angradius_redundancy) for ag_res in sorted_antigen_residue_list}
+        sorted_antigen_residue_list = spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores)
+    
+    # run bepipocket for nr_runs (including initial run)
     restraintsdir = outdir / "restraints"
     if not restraintsdir.is_dir(): restraintsdir.mkdir(parents=True)
-
     max_runs = min(nr_runs - 1, len(sorted_antigen_residue_list))
     for i in range(max_runs):
 
-        out_path = outdir / f"bepipredmap{i}"
+        out_path = outdir / f"bepipocket{i}"
 
         # delete results from earlier run
         if out_path.is_dir() and overwrite_earlier_jobcontent:
@@ -184,14 +199,15 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         # if run terminated prematurely, re-run
         if out_path.is_dir() and not run_file_check: _wipe_dir(out_path)
             
-        # using one antigen residue as restraint (same as in preprint)
+        # using one antigen residue as restraint
         pred_epitope_residue = sorted_antigen_residue_list[i] 
         pred_epitope_residues = [pred_epitope_residue]
+        
         # adjust residue indexing (PDB index starts index 1. )
-        pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]      
+        pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]  
         
         # restraint outfile
-        restraint_file = restraintsdir / f"bepipredmap{i}.restraints" 
+        restraint_file = restraintsdir / f"bepipocket{i}.restraints" 
       
         if hcdr3_mode:
             abag_lightpocket_hcdr3_restraints(pred_epitope_residues, restraint_file, light_chain_letter, center_hcdr3_residue, confidence="1.0",
@@ -208,5 +224,4 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
                         seed=0, use_esm_embeddings=True,
                         msa_directory=msa_directory)
  
-    outfile = open(outdir / "done.txt", "w")
-    outfile.close()
+    (outdir / "done.txt").write_text("")

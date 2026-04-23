@@ -291,7 +291,7 @@ def discopocket_run(
     max_runs = min(nr_runs - 1, len(sorted_antigen_residue_list))
     for i in range(max_runs):
 
-        out_path = outdir / f"discotopemap{i}"
+        out_path = outdir / f"discopocket{i}"
 
         if out_path.is_dir() and overwrite_earlier_jobcontent:
             _wipe_dir(out_path)
@@ -311,7 +311,7 @@ def discopocket_run(
         # sequence index -> restraint index (1-based)
         pred_epitope_residues = [(e[0], e[1], e[2] + 1) for e in pred_epitope_residues]
 
-        restraint_file = restraintsdir / f"discotopemap{i}.restraints"
+        restraint_file = restraintsdir / f"discopocket{i}.restraints"
 
         if hcdr3_mode:
             abag_lightpocket_hcdr3_restraints(

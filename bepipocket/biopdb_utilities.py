@@ -257,45 +257,51 @@ def write_pdb_res_to_seq(residues):
 
     return AA_seq
 
-def get_epitope_patch_residues(pred_structure_file, pred_epitope_residue, antigen_seqidxs=None, patch_angradius=10):
 
-    if is_pdb_file(pred_structure_file): pred_structure = read_pdb_structure(pred_structure_file)
-    elif is_cif_file(pred_structure_file): pred_structure = read_cif_structure(pred_structure_file)
-    pred_structure_chains = list(pred_structure.get_chains())
-    chain_ids = [c.get_id() for c in pred_structure_chains]
-    nr_chains = len(pred_structure_chains)
-    # define antigen + antibody chains
-    if antigen_seqidxs is None: # assume antibody chains are always the last entries
-        ag_chains = pred_structure_chains[:-2]
-        ab_chains = pred_structure_chains[-2:]
+def prepare_epitope_patch_search(pred_structure_file, num_ab_chains=2):
+    if is_pdb_file(pred_structure_file):
+        pred_structure = read_pdb_structure(pred_structure_file)
+    elif is_cif_file(pred_structure_file):
+        pred_structure = read_cif_structure(pred_structure_file)
     else:
-        ag_chains = [pred_structure_chains[idx] for idx in antigen_seqidxs]
-        ab_chains = [pred_structure_chains[i] for i in range(nr_chains) if i not in antigen_seqidxs]
+        raise ValueError(f"Unsupported structure file: {pred_structure_file}")
 
-    # get bio pdb search residue for predicted epitope residue
-    pred_epitope_residue, pred_epitope_chainletter, pred_epitope_residue_idx  = pred_epitope_residue
-    search_residue = list(pred_structure_chains[chain_ids.index(pred_epitope_chainletter)].get_residues())[pred_epitope_residue_idx]  
+    pred_structure_chains = list(pred_structure.get_chains())
+    ag_chains = pred_structure_chains[:-num_ab_chains]
 
-    # create atom list of antigen atoms
+    residues_by_chain = {chain.get_id(): list(chain.get_residues()) for chain in pred_structure_chains}
+    residue_index_lookup = {
+        (chain.get_id(), id(residue)): i
+        for chain in pred_structure_chains
+        for i, residue in enumerate(residues_by_chain[chain.get_id()])
+    }
+
     search_atoms = []
-    for ag_chain in ag_chains: search_atoms.extend( list(ag_chain.get_atoms()) )
-    residue_pairs_within_atomradius = atom_neighbourhead_search_return_res(NeighborSearch( list( search_residue.get_atoms()) ), search_atoms, atom_radius=patch_angradius)
+    for ag_chain in ag_chains:
+        search_atoms.extend(list(ag_chain.get_atoms()))
 
-    search_residue_interacting_residues = []
-    for residue_pair in residue_pairs_within_atomradius:
-        _, residue = residue_pair
-        chain_id = residue.parent.id  # Chain ID
-        hetflag, res_id, icode = residue.id  # Residue ID (tuple: (hetflag, resseq, icode))
-        res_name = residue.resname  # 3-letter amino acid name
-        res_name = AA3to1_DICT[res_name]   
-        search_residue_interacting_residues.append( (res_name, chain_id, res_id) )
-    
-
-    
-    search_residue_interacting_residues = list( set(search_residue_interacting_residues) )
+    return residues_by_chain, residue_index_lookup, search_atoms
 
 
-    return search_residue_interacting_residues 
+def get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, pred_epitope_residue, patch_angradius=5):
+    _, pred_epitope_chainletter, pred_epitope_residue_idx = pred_epitope_residue
+    search_residue = residues_by_chain[pred_epitope_chainletter][pred_epitope_residue_idx]
+
+    residue_pairs_within_atomradius = atom_neighbourhead_search_return_res(
+        NeighborSearch(list(search_residue.get_atoms())),
+        search_atoms,
+        atom_radius=patch_angradius,
+    )
+
+    interacting_residues = set()
+    for _, residue in residue_pairs_within_atomradius:
+        chain_id = residue.parent.id
+        res_name = AA3to1_DICT[residue.resname]
+        residue_idx = residue_index_lookup[(chain_id, id(residue))]
+        interacting_residues.add((res_name, chain_id, residue_idx))
+
+    return list(interacting_residues)
+
 
 def collect_epitope_contacts(pred_structure_files, antigen_seqidxs=None, epipara_aang_distance=4):
 
