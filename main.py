@@ -29,7 +29,7 @@ nr_runs= args.nr_runs
 
 agscores = args.agscores
 hcdr3_mode = args.hcdr3_mode
-hobohm_patch_radius = args.hobohm_patchradius
+hobohm_patchradius = args.hobohm_patchradius
 msa_directory = args.msa_directory
 
 # chai-1 normal prediction mode 
@@ -40,7 +40,7 @@ elif pred == "restraint":
     normal_run(fasta_file, out_dir, restraint_file=restraint_file, overwrite_earlier_jobcontent=False, nr_runs=nr_runs, msa_directory=msa_directory)
 # chai-1 bepipocket (use BepiPred-3.0 to guide antibody-epitope restraints)
 elif pred == "bepipocket":
-    bepipocket_run(fasta_file, out_dir, hcdr3_mode=hcdr3_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory, hobohm_patch_radius=hobohm_patchradius)
+    bepipocket_run(fasta_file, out_dir, hcdr3_mode=hcdr3_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory, hobohm_patchradius=hobohm_patchradius)
 
 elif pred == "discopocket":
     discopocket_run(fasta_file, out_dir, nr_runs=nr_runs, msa_directory=msa_directory)
