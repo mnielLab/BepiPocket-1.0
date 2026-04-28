@@ -124,7 +124,6 @@ def spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag
     return new_ranked_list
 
 
-
 def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200, overwrite_earlier_jobcontent=False,
                    nr_runs=5, max_distance_angstrom="10.0", epipara_aang_distance=5, msa_directory=None, num_ab_chains=2, hcdr3_mode=False, hobohm_patchradius=None):
 
@@ -173,7 +172,7 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     if hobohm_patchradius is not None:
         rank1_structure_path = get_highest_confidence_structure(out_path)
         residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(rank1_structure_path, num_ab_chains=num_ab_chains)
-        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=patch_angradius_redundancy) for ag_res in sorted_antigen_residue_list}
+        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=hobohm_patchradius) for ag_res in sorted_antigen_residue_list}
         sorted_antigen_residue_list = spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores)
     
     # run bepipocket for nr_runs (including initial run)
