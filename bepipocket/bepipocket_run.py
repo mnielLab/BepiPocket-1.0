@@ -208,11 +208,11 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         else:
             abag_make_pocket_restraints(pred_epitope_residues, restraint_file, antibody_letters, max_distance_angstrom=max_distance_angstrom)
 
-        # run_inference(fasta_file=fasta_path, output_dir=out_path,
-        #                 constraint_path=restraint_file,
-        #                 num_trunk_recycles=num_trunk_recycles,
-        #                 num_diffn_timesteps=num_diffn_timesteps,
-        #                 seed=0, use_esm_embeddings=True,
-        #                 msa_directory=msa_directory)
+        run_inference(fasta_file=fasta_path, output_dir=out_path,
+                        constraint_path=restraint_file,
+                        num_trunk_recycles=num_trunk_recycles,
+                        num_diffn_timesteps=num_diffn_timesteps,
+                        seed=0, use_esm_embeddings=True,
+                        msa_directory=msa_directory)
  
     (outdir / "done.txt").write_text("")
