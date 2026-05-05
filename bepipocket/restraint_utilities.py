@@ -93,3 +93,29 @@ def abag_lightpocket_hcdr3_restraints(epitope_residues, restraint_outfile, light
     restraint_out = "\n".join([chai_restraint_header] + restraints)
     with open(restraint_outfile, "w") as outfile:
         outfile.write(restraint_out)
+
+
+
+def spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores):
+    new_ranked_list = []
+    remaining_residues = sorted_antigen_residue_list[:]
+
+    while remaining_residues:
+        blocked_residues = set()
+        next_round = []
+
+        for ag_res in remaining_residues:
+            if ag_res in blocked_residues:
+                next_round.append(ag_res)
+                continue
+
+            new_ranked_list.append(ag_res)
+            blocked_residues.update(epitope_patch_lookup[ag_res])
+
+        remaining_residues = sorted(
+            next_round,
+            key=lambda ag_res: ag_aa_chainletter_residxs_bp3_scores[ag_res],
+            reverse=True,
+        )
+
+    return new_ranked_list

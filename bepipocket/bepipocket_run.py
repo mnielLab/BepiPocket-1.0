@@ -12,7 +12,7 @@ from fasta_utilities import read_accs_and_sequences_from_fasta
 from bp3 import bepipred3
 from biopdb_utilities import prepare_epitope_patch_search, get_epitope_patch_residues
 from general_functions import load_pickle_file, _run_complete, _wipe_dir, get_highest_confidence_structure
-from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints
+from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints, spread_epitope_ranking
 from anarci_utilities import get_hcdr3_center_residue
 
 ### STATIC VARIABLES ###
@@ -99,33 +99,12 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
     return antigen_sequences, avg_ensemble_probs
 
 
-def spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores):
-    new_ranked_list = []
-    remaining_residues = sorted_antigen_residue_list[:]
 
-    while remaining_residues:
-        blocked_residues = set()
-        next_round = []
-
-        for ag_res in remaining_residues:
-            if ag_res in blocked_residues:
-                next_round.append(ag_res)
-                continue
-
-            new_ranked_list.append(ag_res)
-            blocked_residues.update(epitope_patch_lookup[ag_res])
-
-        remaining_residues = sorted(
-            next_round,
-            key=lambda ag_res: ag_aa_chainletter_residxs_bp3_scores[ag_res],
-            reverse=True,
-        )
-
-    return new_ranked_list
 
 
 def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200, overwrite_earlier_jobcontent=False,
-                   nr_runs=5, max_distance_angstrom="10.0", epipara_aang_distance=5, msa_directory=None, num_ab_chains=2, hcdr3_mode=False, hobohm_patchradius=None):
+                   nr_runs=5, max_distance_angstrom="10.0", epipara_aang_distance=5, msa_directory=None, num_ab_chains=2, hcdr3_mode=False,
+                   hobohm_patchradius=None, patchradius=None):
 
     """
     fasta_path: Filepath to the fasta file. Both antigen and antibody chains are expected.
@@ -167,14 +146,19 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
     # get BepiPred-3.0 sorted score list
     ag_aa_chainletter_residxs_bp3_scores = get_ag_residue_bp3_scores(fasta_path, outdir, ag_seqs, ag_aa_chainletter_residxs, bp3_score_lookup=bp3_score_lookup)
     sorted_antigen_residue_list = [k[0] for k in sorted(ag_aa_chainletter_residxs_bp3_scores.items(), key=lambda item: item[1], reverse=True)]
-    
-    # diversify epitope ranking 
-    if hobohm_patchradius is not None:
+
+    if patchradius is not None or hobohm_patchradius is not None:
         rank1_structure_path = get_highest_confidence_structure(out_path)
         residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(rank1_structure_path, num_ab_chains=num_ab_chains)
-        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=hobohm_patchradius) for ag_res in sorted_antigen_residue_list}
-        sorted_antigen_residue_list = spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_aa_chainletter_residxs_bp3_scores)
-    
+
+    if patchradius is not None:
+        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=patchradius) for ag_res in sorted_antigen_residue_list}
+
+    if hobohm_patchradius is not None:
+        epitope_hobohm_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=hobohm_patchradius) for ag_res in sorted_antigen_residue_list}
+        sorted_antigen_residue_list = spread_epitope_ranking(sorted_antigen_residue_list, epitope_hobohm_patch_lookup, ag_aa_chainletter_residxs_bp3_scores)
+
+   
     # run bepipocket for nr_runs (including initial run)
     restraintsdir = outdir / "restraints"
     if not restraintsdir.is_dir(): restraintsdir.mkdir(parents=True)
@@ -199,12 +183,20 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         if out_path.is_dir() and not run_file_check: _wipe_dir(out_path)
             
         # using one antigen residue as restraint
-        pred_epitope_residue = sorted_antigen_residue_list[i] 
-        pred_epitope_residues = [pred_epitope_residue]
+        pred_epitope_residue = sorted_antigen_residue_list[i]
+
+        if patchradius is not None:
+            epitope_patch = epitope_patch_lookup[pred_epitope_residue]
+            pred_epitope_residues = epitope_patch
         
+        else: pred_epitope_residues = [pred_epitope_residue]
+        
+        print(pred_epitope_residue)
+        print("tes")
+        print(epitope_patch)
         # adjust residue indexing (PDB index starts index 1. )
         pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]  
-        
+
         # restraint outfile
         restraint_file = restraintsdir / f"bepipocket{i}.restraints" 
       
@@ -216,11 +208,11 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         else:
             abag_make_pocket_restraints(pred_epitope_residues, restraint_file, antibody_letters, max_distance_angstrom=max_distance_angstrom)
 
-        run_inference(fasta_file=fasta_path, output_dir=out_path,
-                        constraint_path=restraint_file,
-                        num_trunk_recycles=num_trunk_recycles,
-                        num_diffn_timesteps=num_diffn_timesteps,
-                        seed=0, use_esm_embeddings=True,
-                        msa_directory=msa_directory)
+        # run_inference(fasta_file=fasta_path, output_dir=out_path,
+        #                 constraint_path=restraint_file,
+        #                 num_trunk_recycles=num_trunk_recycles,
+        #                 num_diffn_timesteps=num_diffn_timesteps,
+        #                 seed=0, use_esm_embeddings=True,
+        #                 msa_directory=msa_directory)
  
     (outdir / "done.txt").write_text("")

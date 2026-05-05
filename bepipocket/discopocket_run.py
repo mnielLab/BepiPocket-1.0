@@ -14,9 +14,8 @@ MODULE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(MODULE_DIR))
 from fasta_utilities import read_accs_and_sequences_from_fasta
 from general_functions import _run_complete, _wipe_dir
-from biopdb_utilities import is_pdb_file, is_cif_file, cif_to_pdb
-
-from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints
+from biopdb_utilities import is_pdb_file, is_cif_file, cif_to_pdb, prepare_epitope_patch_search, get_epitope_patch_residues
+from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints, spread_epitope_ranking
 from anarci_utilities import get_hcdr3_center_residue
 
 DISCOTOPE3_MODELS = MODULE_DIR / "models" / "discotope3_models"
@@ -96,7 +95,7 @@ def run_discotope3_pdb(structure_file, discotope_outdir, outdir, multichain_mode
     discotope_done_file.touch()
     
     # clean up
-    pdb_input.unlink()
+    if is_cif_file(structure_file) and pdb_input.exists(): pdb_input.unlink()
     if discotope_outdir.exists():
         shutil.rmtree(discotope_outdir)
 
@@ -140,6 +139,7 @@ def discopocket_run(
     num_ab_chains=2,
     hcdr3_mode=False,
     cpu_only_discotope=False,
+    hobohm_patchradius=None,
 ):
     """
     DiscoPocket:
@@ -283,6 +283,29 @@ def discopocket_run(
     sorted_antigen_residue_list = [
         k for k, _ in sorted(ag_residue_score_lookup.items(), key=lambda item: item[1], reverse=True)
     ]
+
+    # discotope-3
+    if hobohm_patchradius is not None:
+        rank1_structure_path = get_highest_confidence_structure(outdir / "seed0")
+        residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(
+            rank1_structure_path,
+            num_ab_chains=num_ab_chains,
+        )
+        epitope_patch_lookup = {
+            ag_res: get_epitope_patch_residues(
+                residues_by_chain,
+                residue_index_lookup,
+                search_atoms,
+                ag_res,
+                patch_angradius=hobohm_patchradius,
+            )
+            for ag_res in sorted_antigen_residue_list
+        }
+        sorted_antigen_residue_list = spread_epitope_ranking(
+            sorted_antigen_residue_list,
+            epitope_patch_lookup,
+            ag_residue_score_lookup,
+        )
 
     # 7. Iterative restraint-guided Chai runs
     restraintsdir = outdir / "restraints"
