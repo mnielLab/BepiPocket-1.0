@@ -174,18 +174,14 @@ def discopocket_run(
 
         (outdir / "initialrun_done.txt").touch()
 
-    #
     # 2. Metadata / chain bookkeeping
-    #
     accs_and_seqs = read_accs_and_sequences_from_fasta(fasta_path)
     
     nr_chains = len(accs_and_seqs)
    
     structure_letters = [ascii_uppercase[i] for i in range(nr_chains)]
-    #
     antigen_letters = structure_letters[:-num_ab_chains]
     antigen_seqs = [d[1] for d in accs_and_seqs[:-num_ab_chains]]
-    #
     antibody_letters = structure_letters[-num_ab_chains:]
     
     if hcdr3_mode:
@@ -225,9 +221,7 @@ def discopocket_run(
     best_ag_scorefile = antigen_score_files[best_ag_idx]
     best_ag_structure = best_ag_scorefile.parent / f"{best_ag_scorefile.stem.replace('scores', 'pred')}.cif"
 
-    #
     # 5. Run DiscoTope on antigen-only structure
-    #
     discotope_run_outdir = outdir / "discotope3_tmp"
     discotope_final_outdir = outdir / "discotope3"
 
@@ -287,25 +281,10 @@ def discopocket_run(
     # discotope-3
     if hobohm_patchradius is not None:
         rank1_structure_path = get_highest_confidence_structure(outdir / "seed0")
-        residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(
-            rank1_structure_path,
-            num_ab_chains=num_ab_chains,
-        )
-        epitope_patch_lookup = {
-            ag_res: get_epitope_patch_residues(
-                residues_by_chain,
-                residue_index_lookup,
-                search_atoms,
-                ag_res,
-                patch_angradius=hobohm_patchradius,
-            )
-            for ag_res in sorted_antigen_residue_list
-        }
-        sorted_antigen_residue_list = spread_epitope_ranking(
-            sorted_antigen_residue_list,
-            epitope_patch_lookup,
-            ag_residue_score_lookup,
-        )
+        residues_by_chain, residue_index_lookup, search_atoms = prepare_epitope_patch_search(rank1_structure_path, num_ab_chains=num_ab_chains)
+        epitope_patch_lookup = {ag_res: get_epitope_patch_residues(residues_by_chain, residue_index_lookup, search_atoms, ag_res, patch_angradius=hobohm_patchradius)
+                                for ag_res in sorted_antigen_residue_list}
+        sorted_antigen_residue_list = spread_epitope_ranking(sorted_antigen_residue_list, epitope_patch_lookup, ag_residue_score_lookup)
 
     # 7. Iterative restraint-guided Chai runs
     restraintsdir = outdir / "restraints"
@@ -337,32 +316,14 @@ def discopocket_run(
         restraint_file = restraintsdir / f"discopocket{i}.restraints"
 
         if hcdr3_mode:
-            abag_lightpocket_hcdr3_restraints(
-                pred_epitope_residues,
-                restraint_file,
-                light_chain_letter,
-                center_hcdr3_residue,
-                confidence="1.0",
-                min_distance_angstrom="0.0",
-                max_distance_angstrom="10.0",
-            )
+            abag_lightpocket_hcdr3_restraints(pred_epitope_residues, restraint_file, light_chain_letter,
+                                              center_hcdr3_residue, max_distance_angstrom=max_distance_angstrom)
         else:
-            abag_make_pocket_restraints(
-                pred_epitope_residues,
-                restraint_file,
-                antibody_letters,
-                max_distance_angstrom=max_distance_angstrom,
-            )
+            abag_make_pocket_restraints(pred_epitope_residues, restraint_file,
+                                        antibody_letters, max_distance_angstrom=max_distance_angstrom)
 
-        run_inference(
-            fasta_file=fasta_path,
-            output_dir=out_path,
-            constraint_path=restraint_file,
-            num_trunk_recycles=num_trunk_recycles,
-            num_diffn_timesteps=num_diffn_timesteps,
-            seed=0,
-            use_esm_embeddings=True,
-            msa_directory=msa_directory,
-        )
+        run_inference(fasta_file=fasta_path, output_dir=out_path, constraint_path=restraint_file,
+                      num_trunk_recycles=num_trunk_recycles, num_diffn_timesteps=num_diffn_timesteps, seed=0,
+                      use_esm_embeddings=True, msa_directory=msa_directory)
 
     (outdir / "done.txt").touch()

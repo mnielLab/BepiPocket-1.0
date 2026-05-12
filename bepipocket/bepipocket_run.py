@@ -99,9 +99,6 @@ def run_bepipred3_fasta(fasta_path, outdir, esm2_model_path=None, rm_esm2_encodi
     return antigen_sequences, avg_ensemble_probs
 
 
-
-
-
 def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles=4, num_diffn_timesteps=200, overwrite_earlier_jobcontent=False,
                    nr_runs=5, max_distance_angstrom="10.0", epipara_aang_distance=5, msa_directory=None, num_ab_chains=2, hcdr3_mode=False,
                    hobohm_patchradius=None, patchradius=None):
@@ -191,9 +188,6 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         
         else: pred_epitope_residues = [pred_epitope_residue]
         
-        print(pred_epitope_residue)
-        print("tes")
-        print(epitope_patch)
         # adjust residue indexing (PDB index starts index 1. )
         pred_epitope_residues =  [(e[0], e[1], e[2]+1) for e in pred_epitope_residues]  
 
@@ -201,8 +195,8 @@ def bepipocket_run(fasta_path, outdir, bp3_score_lookup=None, num_trunk_recycles
         restraint_file = restraintsdir / f"bepipocket{i}.restraints" 
       
         if hcdr3_mode:
-            abag_lightpocket_hcdr3_restraints(pred_epitope_residues, restraint_file, light_chain_letter, center_hcdr3_residue, confidence="1.0",
-                                    min_distance_angstrom="0.0", max_distance_angstrom="10.0")
+            abag_lightpocket_hcdr3_restraints(pred_epitope_residues, restraint_file, light_chain_letter,
+                                              center_hcdr3_residue, max_distance_angstrom=max_distance_angstrom)
 
         # normal mode
         else:
