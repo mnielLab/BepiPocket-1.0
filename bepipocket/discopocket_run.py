@@ -7,7 +7,6 @@ import numpy as np
 import pickle
 import pandas as pd
 from string import ascii_uppercase
-import pdb
 
 from chai_lab.chai1 import run_inference
 
@@ -67,7 +66,6 @@ def run_discotope3_pdb(structure_file, discotope_outdir, outdir, multichain_mode
     else:
         raise ValueError(f"Specified structure file was not a valid PDB or CIF file: {structure_file}")
     
-    pdb.set_trace()
     cmd.extend(["-f", str(pdb_input)])
 
     if multichain_mode:
