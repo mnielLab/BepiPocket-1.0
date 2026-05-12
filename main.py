@@ -13,11 +13,15 @@ parser.add_argument("-ir", action="store", dest="restraint_file", default=None, 
 parser.add_argument("-o", required=True, action="store", dest="out_dir", type=Path, help="Structure output directory")
 parser.add_argument("-pred", action="store", choices=["normal", "restraint", "bepipocket","discopocket", "random"], required=True, dest="pred", help="Chai-1 structure modelling mode to run.")
 parser.add_argument("-nr_runs", action="store", dest="nr_runs", type=int, default=6, help="Number of runs for Chai-1 structure modelling.")
+parser.add_argument("-diff_n", action="store", dest="num_diffn_timesteps", type=int, default=200, help="Number of diffusion steps to use for each Chai-1 run.")
 parser.add_argument("-agscores", action="store", dest="agscores", default=None, type=Path, help="(Not required, will just compute on runtime, if not specified). Path to dict containing precomputed antigen sequence score (BepiPred-3.0 etc.): {FGKAJ...:array([0.4,,0.3,0.5,0.6,0.8...])..}.")
 parser.add_argument("-hcdr3_mode", action="store_true", dest="hcdr3_mode", help="Create contact restraints between HCDR3 center residues and predicted BepiPocket or DiscoPocket residues.")
 parser.add_argument("-hobohm_patchradius", action="store", dest="hobohm_patchradius", default=None, type=float, help="Specify patch radius to use to spread epitope scoring with hobohm 1 patch algorithm. Default is None (not using it).")
 parser.add_argument("-patchradius", action="store", dest="patchradius", default=None, type=float, help="Specifiy patch radius to use residues within radius of predicted epitope radius as restraint.")
 parser.add_argument("-msa_directory", action="store", dest="msa_directory", default=None, type=Path, help="Look for MSA .pqt files with sequence hash filenames mathcing query sequences in this directory.")
+
+
+
 
 # set variables
 args = parser.parse_args()
@@ -25,8 +29,8 @@ fasta_file = args.fasta_file
 out_dir = args.out_dir
 pred = args.pred
 restraint_file = args.restraint_file
-nr_runs= args.nr_runs
-
+nr_runs = args.nr_runs
+num_diffn_timesteps = args.num_diffn_timesteps
 agscores = args.agscores
 hcdr3_mode = args.hcdr3_mode
 hobohm_patchradius = args.hobohm_patchradius
@@ -35,15 +39,15 @@ msa_directory = args.msa_directory
 
 # chai-1 normal prediction mode 
 if pred == "normal":
-    normal_run(fasta_file, out_dir, overwrite_earlier_jobcontent=False, seeds=nr_runs, msa_directory=msa_directory)
+    normal_run(fasta_file, out_dir, overwrite_earlier_jobcontent=False, seeds=nr_runs, msa_directory=msa_directory, num_diffn_timesteps=num_diffn_timesteps)
 # chai-1 restraint prediction mode (User defined restraints, as described in Chai-1 documentation)
 elif pred == "restraint":
-    normal_run(fasta_file, out_dir, restraint_file=restraint_file, overwrite_earlier_jobcontent=False, nr_runs=nr_runs, msa_directory=msa_directory)
+    normal_run(fasta_file, out_dir, restraint_file=restraint_file, overwrite_earlier_jobcontent=False, nr_runs=nr_runs, msa_directory=msa_directory, num_diffn_timesteps=num_diffn_timesteps)
 # chai-1 bepipocket (use BepiPred-3.0 to guide antibody-epitope restraints)
 elif pred == "bepipocket":
-    bepipocket_run(fasta_file, out_dir, hcdr3_mode=hcdr3_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory, hobohm_patchradius=hobohm_patchradius, patchradius=patchradius)
+    bepipocket_run(fasta_file, out_dir, hcdr3_mode=hcdr3_mode, nr_runs=nr_runs, bp3_score_lookup=agscores, msa_directory=msa_directory, hobohm_patchradius=hobohm_patchradius, patchradius=patchradius, num_diffn_timesteps=num_diffn_timesteps)
 elif pred == "discopocket":
-    discopocket_run(fasta_file, out_dir, nr_runs=nr_runs, msa_directory=msa_directory, hobohm_patchradius=hobohm_patchradius)
+    discopocket_run(fasta_file, out_dir, nr_runs=nr_runs, msa_directory=msa_directory, hobohm_patchradius=hobohm_patchradius, num_diffn_timesteps=num_diffn_timesteps)
 # chai-1 randompocket (use random guidance for antibody-epitope restraint (baseline) )
 elif pred == "random":
-    randompocket_run(fasta_file, out_dir, nr_runs=nr_runs, random_score_lookup=agscores, msa_directory=msa_directory)
+    randompocket_run(fasta_file, out_dir, nr_runs=nr_runs, random_score_lookup=agscores, msa_directory=msa_directory, num_diffn_timesteps=num_diffn_timesteps)
