@@ -7,13 +7,14 @@ import numpy as np
 import pickle
 import pandas as pd
 from string import ascii_uppercase
+import pdb
 
 from chai_lab.chai1 import run_inference
 
 MODULE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(MODULE_DIR))
 from fasta_utilities import read_accs_and_sequences_from_fasta
-from general_functions import _run_complete, _wipe_dir
+from general_functions import _run_complete, _wipe_dir, get_highest_confidence_structure
 from biopdb_utilities import is_pdb_file, is_cif_file, cif_to_pdb, prepare_epitope_patch_search, get_epitope_patch_residues
 from restraint_utilities import abag_make_pocket_restraints, abag_lightpocket_hcdr3_restraints, spread_epitope_ranking
 from anarci_utilities import get_hcdr3_center_residue
@@ -65,7 +66,8 @@ def run_discotope3_pdb(structure_file, discotope_outdir, outdir, multichain_mode
         cif_to_pdb(structure_file, pdb_input)
     else:
         raise ValueError(f"Specified structure file was not a valid PDB or CIF file: {structure_file}")
-
+    
+    pdb.set_trace()
     cmd.extend(["-f", str(pdb_input)])
 
     if multichain_mode:

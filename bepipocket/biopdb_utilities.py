@@ -98,6 +98,8 @@ def cif_to_pdb(cif_file, pdb_file, verbose=True):
     Returns:
         None
     """
+    cif_file = str(cif_file)
+    pdb_file = str(pdb_file)
     try:
         # Parse the CIF file
         parser = MMCIFParser(QUIET=True)
